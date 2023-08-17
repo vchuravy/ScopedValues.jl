@@ -11,29 +11,25 @@ else
     ScopedVariable(x)
 
 Create a container that propagates values across scopes.
-Use [`scope`](@ref) to create a new scope.
+Use [`scoped`](@ref) to create and enter a new scope.
 
-# Examples:
-```
-const var = ScopedVariable(1)
-var[] # contains 1
+Values can only be set when entering a new scope,
+and the value referred to will be constant during the
+execution of a scope.
 
-scoped(var, 2) do
-    var[] # contains 2
-end
+Dynamic scopes are propagated across tasks.
 
-scoped() do
-    var[] # contains 1, inherited from parent scope
-end
+# Examples
+```jldoctest
+julia> const svar = ScopedVariable(1);
 
-scoped() do
-    var[] # contains 1
-    var[] = 2
-    var[] # contains 2
-    scoped() do
-        var[] # contains 2
-    end
-end
+julia> svar[]
+1
+
+julia> scoped(svar => 2) do
+           svar[]
+       end
+2
 ```
 """
 mutable struct ScopedVariable{T}
@@ -96,12 +92,8 @@ end
 
 function __set_var!(scope::Scope, var::ScopedVariable{T}, val::T) where T
     # internal function!
-    @lock scope begin
-        if haskey(scope.values, var)
-            error("ScopedVariable: Variable is already set for this scope.")
-        end
-        scope.values[var] = val
-    end
+    assert !haskey(scope.values, key)
+    scope.values[var] = val
 end
 
 """
