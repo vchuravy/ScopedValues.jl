@@ -81,6 +81,8 @@ function Base.getindex(var::ScopedVariable)
 end
 
 function Base.setindex!(var::ScopedVariable{T}, val::T) where T
+    # if we wanted to make the values mutable we would need to mutate
+    # the initial_value when `current_scope() == nothing`
     scope = current_scope()
     if scope === nothing
         error("ScopedVariable: Currently not in scope.")
@@ -92,5 +94,16 @@ function Base.setindex!(var::ScopedVariable{T}, val::T) where T
         var.values[scope] = val
     end
 end
+
+function isset(var::ScopedVariable)
+    scope = current_scope()
+    if scope === nothing
+        return true
+    end
+    return haskey(var.values, scope)
+end
+
+Base.lock(var::ScopedVariable) = lock(var.values)
+Base.unlock(var::ScopedVariable) = unlock(var.values)
 
 end # module ScopedVariables
