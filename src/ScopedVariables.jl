@@ -1,11 +1,12 @@
 module ScopedVariables
 
-export ScopedVariable, scoped
+export ScopedVariable, UncachedScopedVariable, scoped
 
 mutable struct Scope
     const parent::Union{Nothing, Scope}
-    Scope() = new(nothing)
-    Scope(parent) = new(parent)
+    const depth::UInt
+    Scope(parent::Nothing=nothing) = new(parent, 0)
+    Scope(parent) = new(parent, max(parent.depth+1, parent.depth))
 end
 
 """
@@ -40,10 +41,71 @@ end
 mutable struct ScopedVariable{T}
     const values::WeakKeyDict{Scope, T}
     const initial_value::T
-    ScopedVariable(initial_value::T) where T = new{T}(WeakKeyDict{Scope, T}(), initial_value)
+    ScopedVariable(initial_value::T) where {T} = new{T}(WeakKeyDict{Scope, T}(), initial_value)
 end
 
 Base.eltype(::Type{ScopedVariable{T}}) where {T} = T
+
+mutable struct ScopeCache
+    scope::Scope
+    values::WeakKeyDict{<:ScopedVariable,Any}
+    ScopeCache(scope::Scope) = new(scope, WeakKeyDict{ScopedVariable,Any}())
+end
+
+const TLS_KEY = gensym(:ScopedVariablesTLS)
+const CACHE_BREAKEVEN = 5
+
+function Base.getindex(var::ScopedVariable{T})::T where T
+    scope = current_scope()
+    if scope === nothing
+        return var.initial_value
+    end
+    if scope.depth < CACHE_BREAKEVEN
+        @lock var.values begin
+            while scope !== nothing
+                if haskey(var.values.ht, scope)
+                    return var.values.ht[scope]
+                end
+                scope = scope.parent
+            end
+        end
+        return var.initial_value
+    end
+
+    # Is cache complexity worth it? The breakeven should depend on distance of the last set scope value.
+
+    tls = Base.get_task_tls(current_task())
+    fresh_cache = !haskey(tls, TLS_KEY)
+    if !fresh_cache
+        cache = tls[TLS_KEY]::ScopeCache
+        if cache.scope != scope
+            fresh_cache = true
+        end
+    end
+    if fresh_cache
+        cache = ScopeCache(scope)
+        tls[TLS_KEY] = cache
+    else
+        @lock cache.values begin
+            if haskey(cache.values.ht, var)
+                return cache.values.ht[var]::T
+            end
+        end
+    end
+
+    val = var.initial_value
+    @lock var.values begin
+        while scope !== nothing
+            if haskey(var.values.ht, scope)
+                val = var.values.ht[scope]
+                break
+            end
+            scope = scope.parent
+        end
+    end
+    cache.values[var] = val
+    return val
+end
 
 function Base.show(io::IO, var::ScopedVariable)
     print(io, ScopedVariable)
@@ -53,37 +115,8 @@ function Base.show(io::IO, var::ScopedVariable)
     print(io, ')')
 end
 
-include("payloadlogger.jl")
-
-"""
-    scoped(f, var::ScopedVariable{T}, val::T)
-
-Execute `f` in a new scope with `var` set to `val`.
-"""
-function scoped(f, var::ScopedVariable{T}, val::T) where T
-    scoped() do
-        var[] = val
-        f()
-    end
-end
-
-function Base.getindex(var::ScopedVariable)
-    scope = current_scope()
-    @lock var.values begin
-        while scope !== nothing
-            if haskey(var.values.ht, scope)
-                return var.values.ht[scope]
-            end
-            scope = scope.parent
-        end
-    end
-    return var.initial_value
-end
-
-function Base.setindex!(var::ScopedVariable{T}, val::T) where T
-    # if we wanted to make the values mutable we would need to mutate
-    # the initial_value when `current_scope() == nothing`
-    scope = current_scope()
+function __set_var!(scope::Scope, var::ScopedVariable{T}, val::T) where T
+    # internal function!
     if scope === nothing
         error("ScopedVariable: Currently not in scope.")
     end
@@ -95,15 +128,29 @@ function Base.setindex!(var::ScopedVariable{T}, val::T) where T
     end
 end
 
-function isset(var::ScopedVariable)
-    scope = current_scope()
-    if scope === nothing
-        return true
+"""
+    scoped(f, var::ScopedVariable{T} => val::T)
+
+Execute `f` in a new scope with `var` set to `val`.
+"""
+function scoped(f, pair::Pair{<:ScopedVariable{T}, T}) where T
+    scoped() do
+        scope = current_scope()
+        __set_var!(scope, pair...)
+        f()
     end
-    return haskey(var.values, scope)
 end
 
-Base.lock(var::ScopedVariable) = lock(var.values)
-Base.unlock(var::ScopedVariable) = unlock(var.values)
+function scoped(f, pairs::Pair{<:ScopedVariable}...)
+    scoped() do
+        scope = current_scope()
+        for (var, val) in pairs
+            __set_var!(scope, var, val)
+        end
+        f()
+    end
+end
+
+include("payloadlogger.jl")
 
 end # module ScopedVariables

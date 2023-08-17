@@ -13,11 +13,6 @@ function current_scope()
     return nothing
 end
 
-"""
-    scoped(f)
-
-Execute `f` in new scope.
-"""
 function scoped(f)
     return Logging.with_logger(f, ScopePayloadLogger(current_logger(), Scope(current_scope())))
 end
