@@ -1,6 +1,12 @@
 module ScopedVariables
 
-export ScopedVariable, UncachedScopedVariable, scoped
+export ScopedVariable, scoped
+const CACHE_BREAKEVEN = 5
+
+if isdefined(Base, :ScopedVariables)
+    import Base.ScopedVariables: ScopedVariable, scoped
+else
+
 
 mutable struct Scope
     const parent::Union{Nothing, Scope}
@@ -53,7 +59,6 @@ mutable struct ScopeCache
 end
 
 const TLS_KEY = gensym(:ScopedVariablesTLS)
-const CACHE_BREAKEVEN = 5
 
 function Base.getindex(var::ScopedVariable{T})::T where T
     scope = current_scope()
@@ -152,5 +157,7 @@ function scoped(f, pairs::Pair{<:ScopedVariable}...)
 end
 
 include("payloadlogger.jl")
+
+end # isdefined
 
 end # module ScopedVariables
