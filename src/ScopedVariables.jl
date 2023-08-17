@@ -7,14 +7,6 @@ if isdefined(Base, :ScopedVariables)
     import Base.ScopedVariables: ScopedVariable, scoped
 else
 
-
-mutable struct Scope
-    const parent::Union{Nothing, Scope}
-    const depth::UInt
-    Scope(parent::Nothing=nothing) = new(parent, 0)
-    Scope(parent) = new(parent, max(parent.depth+1, parent.depth))
-end
-
 """
     ScopedVariable(x)
 
@@ -45,73 +37,55 @@ end
 ```
 """
 mutable struct ScopedVariable{T}
-    const values::WeakKeyDict{Scope, T}
     const initial_value::T
-    ScopedVariable(initial_value::T) where {T} = new{T}(WeakKeyDict{Scope, T}(), initial_value)
+    ScopedVariable{T}(initial_value) where {T} = new{T}(initial_value)
 end
+ScopedVariable(initial_value::T) where {T} = ScopedVariable{T}(initial_value)
 
 Base.eltype(::Type{ScopedVariable{T}}) where {T} = T
 
-mutable struct ScopeCache
-    scope::Scope
-    values::WeakKeyDict{<:ScopedVariable,Any}
-    ScopeCache(scope::Scope) = new(scope, WeakKeyDict{ScopedVariable,Any}())
+mutable struct Scope
+    const parent::Union{Nothing, Scope}
+    # XXX: Probably want this to be an upgradeable RWLock
+    const lock::Base.Threads.SpinLock
+    # IdDict trades off some potential space savings for performance.
+    # IdDict ~60ns; WeakKeyDict ~100ns
+    # Space savings would come from ScopedVariables being GC'd.
+    # Now we hold onto them until Scope get's GC'd
+    const values::IdDict{<:ScopedVariable, Any}
+    Scope(parent) = new(parent, Base.Threads.SpinLock(), IdDict{ScopedVariable, Any}())
 end
 
-const TLS_KEY = gensym(:ScopedVariablesTLS)
+function Base.show(io::IO, ::Scope)
+    print(io, Scope)
+end
+
+Base.lock(scope::Scope) = lock(scope.lock)
+Base.unlock(scope::Scope) = unlock(scope.lock)
 
 function Base.getindex(var::ScopedVariable{T})::T where T
-    scope = current_scope()
-    if scope === nothing
-        return var.initial_value
-    end
-    if scope.depth < CACHE_BREAKEVEN
-        @lock var.values begin
-            while scope !== nothing
-                if haskey(var.values.ht, scope)
-                    return var.values.ht[scope]
-                end
-                scope = scope.parent
-            end
-        end
-        return var.initial_value
-    end
-
-    # Is cache complexity worth it? The breakeven should depend on distance of the last set scope value.
-
-    tls = Base.get_task_tls(current_task())
-    fresh_cache = !haskey(tls, TLS_KEY)
-    if !fresh_cache
-        cache = tls[TLS_KEY]::ScopeCache
-        if cache.scope != scope
-            fresh_cache = true
-        end
-    end
-    if fresh_cache
-        cache = ScopeCache(scope)
-        tls[TLS_KEY] = cache
-    else
-        @lock cache.values begin
-            if haskey(cache.values.ht, var)
-                return cache.values.ht[var]::T
-            end
-        end
-    end
-
+    cs = scope = current_scope()
     val = var.initial_value
-    @lock var.values begin
-        while scope !== nothing
-            if haskey(var.values.ht, scope)
-                val = var.values.ht[scope]
+    while scope !== nothing
+        @lock scope begin
+            if haskey(scope.values, var)
+                val = scope.values[var]
                 break
             end
-            scope = scope.parent
+        end
+        scope = scope.parent
+    end
+    if scope !== cs
+        # found the value in an upper scope, copy it down to cache.
+        # this is beneficial since in contrast to storing the values in the ScopedVariable
+        # we now need to acquire n-Locks for an n-depth scope.
+        @lock cs begin
+            cs.values[var] = val
         end
     end
-    cache.values[var] = val
     return val
 end
-
+    
 function Base.show(io::IO, var::ScopedVariable)
     print(io, ScopedVariable)
     print(io, '{', eltype(var), '}')
@@ -122,14 +96,11 @@ end
 
 function __set_var!(scope::Scope, var::ScopedVariable{T}, val::T) where T
     # internal function!
-    if scope === nothing
-        error("ScopedVariable: Currently not in scope.")
-    end
-    @lock var.values begin
-        if haskey(var.values.ht, scope)
+    @lock scope begin
+        if haskey(scope.values, var)
             error("ScopedVariable: Variable is already set for this scope.")
         end
-        var.values[scope] = val
+        scope.values[var] = val
     end
 end
 
