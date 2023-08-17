@@ -1,5 +1,6 @@
 The MIT License (MIT)
 
+Copyright &copy; 2020 Takafumi Arakaki
 Copyright &copy; 2023: Valentin Churavy, and other contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
