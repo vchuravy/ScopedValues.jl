@@ -13,7 +13,7 @@ function current_scope()
     return nothing
 end
 
-function scoped(f)
+function enter_scope(f)
     return Logging.with_logger(f, ScopePayloadLogger(current_logger(), Scope(current_scope())))
 end
 
