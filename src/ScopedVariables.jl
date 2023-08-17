@@ -8,6 +8,35 @@ mutable struct Scope
     Scope(parent) = new(parent)
 end
 
+"""
+    ScopedVariable(x)
+
+Create a container that propagates values across scopes.
+Use [`scope`](@ref) to create a new scope.
+
+# Examples:
+```
+const var = ScopedVariable(1)
+var[] # contains 1
+
+scoped(var, 2) do
+    var[] # contains 2
+end
+
+scoped() do
+    var[] # contains 1, inherited from parent scope
+end
+
+scoped() do
+    var[] # contains 1
+    var[] = 2
+    var[] # contains 2
+    scoped() do
+        var[] # contains 2
+    end
+end
+```
+"""
 mutable struct ScopedVariable{T}
     const values::WeakKeyDict{Scope, T}
     const initial_value::T
@@ -25,6 +54,18 @@ function Base.show(io::IO, var::ScopedVariable)
 end
 
 include("payloadlogger.jl")
+
+"""
+    scoped(f, var::ScopedVariable{T}, val::T)
+
+Execute `f` in a new scope with `var` set to `val`.
+"""
+function scoped(f, var::ScopedVariable{T}, val::T) where T
+    scoped() do
+        var[] = val
+        f()
+    end
+end
 
 function Base.getindex(var::ScopedVariable)
     scope = current_scope()
