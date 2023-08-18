@@ -34,6 +34,13 @@ const gvar_float = ScopedValue(1.0)
     end
 end
 
+emptyf() = nothing
+
+@testset "conversion" begin
+    scoped(emptyf, gvar_float=>2)
+    @test_throws MethodError scoped(emptyf, gvar_float=>"hello")
+end
+
 import Base.Threads: @spawn
 @testset "tasks" begin
     @test fetch(@spawn begin

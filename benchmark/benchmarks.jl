@@ -30,10 +30,9 @@ SUITE["BASIC"]["scoped with assignment"] = @benchmarkable scoped(emptyf, svar =>
 SUITE["BASIC"]["scoped with assignment & ref"] = @benchmarkable scoped(()->svar[], svar => 2)
 
 function setup_scope(N)
-    scope = ScopedValues.Scope(nothing)
+    scope = nothing
     for i in 1:N
-        scope = ScopedValues.Scope(scope)
-        @atomic scope.values = ScopedValues.ImmutableDict{ScopedValue, Any}(depth, i)
+        scope = ScopedValues.Scope(scope, depth, i)
     end
 
     current_task().logstate = Base.CoreLogging.LogState(ScopedValues.ScopePayloadLogger(
