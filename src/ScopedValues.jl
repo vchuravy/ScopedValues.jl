@@ -36,41 +36,32 @@ mutable struct ScopedValue{T}
     ScopedValue{T}(initial_value) where {T} = new{T}(initial_value)
 end
 ScopedValue(initial_value::T) where {T} = ScopedValue{T}(initial_value)
-# Base.hash(var::ScopedValue) = Base.objectid(var)
-# Base.isequal(a::ScopedValue, b::ScopedValue) = Base.objectid(a) == Base.objectid(b)
 
 Base.eltype(::Type{ScopedValue{T}}) where {T} = T
 
-# Split Scope and ScopeCache into two separate entities
-# Scope is read-only after construction, and ScopeCache is task-local
-# thus we are lock-free.
-
-import Base: ImmutableDict
-
-mutable struct Scope
-    const values::ImmutableDict{ScopedValue, Any}
+# If we wanted to be really fancy we could implement Scope,
+# as Ctrie
+mutable struct Scope{T}
+    const parent::Union{Nothing, Scope}
+    const key::ScopedValue{T}
+    const value::T
 end
-Scope() = new(ImmutableDict{ScopedValue, Any}())
+Scope(parent, key::ScopedValue{T}, value) where T =
+    Scope(parent, key, convert(T, value))
 
 function Base.show(io::IO, ::Scope)
     print(io, Scope)
 end
 
-@inline function _get(dict::ImmutableDict, key, ::Type{T}) where T
-    while isdefined(dict, :parent)
-        isequal(dict.key, key) && return Some(dict.value::T)
-        dict = dict.parent
-    end
-    return nothing
-end
-
 function Base.getindex(var::ScopedValue{T})::T where T
     scope = current_scope()
-    if scope === nothing
-        return var.initial_value
+    while scope !== nothing
+        if scope.key === var
+            return scope.value::T
+        end
+        scope = scope.parent
     end
-
-    return something(_get(scope.values, var, T), var.initial_value)
+    return var.initial_value
 end
 
 function Base.show(io::IO, var::ScopedValue)
@@ -88,15 +79,11 @@ Execute `f` in a new scope with `var` set to `val`.
 """
 function scoped(f, pair::Pair{<:ScopedValue}, rest::Pair{<:ScopedValue}...)
     scope = current_scope()
-    if scope === nothing
-        values = ImmutableDict{ScopedValue, Any}(pair...)
-    else
-        values = ImmutableDict{ScopedValue, Any}(scope.values, pair...)
-    end
+    scope = Scope(scope, pair...)
     for pair in rest
-        values = ImmutableDict{ScopedValue, Any}(values, pair...)
+        scope = Scope(scope, pair...)
     end
-    enter_scope(Scope(values)) do
+    enter_scope(scope) do
         f()
     end
 end
