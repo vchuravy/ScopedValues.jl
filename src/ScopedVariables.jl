@@ -37,72 +37,82 @@ mutable struct ScopedVariable{T}
     ScopedVariable{T}(initial_value) where {T} = new{T}(initial_value)
 end
 ScopedVariable(initial_value::T) where {T} = ScopedVariable{T}(initial_value)
+# Base.hash(var::ScopedVariable) = Base.objectid(var)
+# Base.isequal(a::ScopedVariable, b::ScopedVariable) = Base.objectid(a) == Base.objectid(b) 
 
 Base.eltype(::Type{ScopedVariable{T}}) where {T} = T
 
-mutable struct ScopeCache
-    const key::ScopedVariable
-    const value::Any
-    @atomic next::Union{Nothing, ScopeCache}
-end
+# Split Scope and ScopeCache into two separate entities
+# Scope is read-only after construction, and ScopeCache is task-local
+# thus we are lock-free.
+
+import Base: ImmutableDict
 
 mutable struct Scope
     const parent::Union{Nothing, Scope}
-    # Split values and cache so that we don't need to hold the lock
-    # while doing a scope-walk
-    const values::IdDict{<:ScopedVariable, Any}
-    @atomic cache::Union{Nothing, ScopeCache}
-    Scope(parent) = new(parent, IdDict{ScopedVariable, Any}(), nothing)
+    values::ImmutableDict{ScopedVariable, Any}
+    cache::ScopeCache
+    Scope(parent) = new(parent, ImmutableDict{ScopedVariable, Any}(), ScopeCache())
 end
 
-function check_cache(scope::Scope, key::ScopedVariable{T}) where T
-    cache = @atomic :acquire scope.cache
-    if cache === nothing
-        return nothing
-    end
-    if cache.key === key
-        return Some(cache.value::T)
-    end
-    return nothing
+mutable struct ScopeCache
+    const scope::Scope
+    values::ImmutableDict{ScopedVariable, Any}
+    ScopeCache(scope) = new(scope, ImmutableDict{ScopedVariable, Any}())
 end
 
-function insert_cache!(scope::Scope, key::ScopedVariable{T}, value::T) where T
-    old = @atomic :acquire scope.cache
-    new = ScopeCache(key, value, old)
-    success = false
-    while !success
-        @atomic new.next = old
-        old, success = @atomicreplace :acquire_release :acquire scope.cache old => new
+const SCOPE_CACHE_TLS = gensym(:SCOPE_CACHE)
+function scope_cache(scope)
+    tls = task_local_storage()
+    new_cache = !haskey(tls, SCOPE_CACHE_TLS)
+    if !new_cache
+        cache = (@inbounds tls[SCOPE_CACHE_TLS])::ScopeCache
+        new_cache = cache.scope != scope
     end
-    return nothing
+    if new_cache
+        cache = ScopeCache(scope)
+        tls[SCOPE_CACHE_TLS] = cache
+    end
+    return cache::ScopeCache
 end
 
 function Base.show(io::IO, ::Scope)
     print(io, Scope)
 end
 
+@inline function _get(dict::ImmutableDict, key, ::Type{T}) where T
+    while isdefined(dict, :parent)
+        isequal(dict.key, key) && return Some(dict.value::T)
+        dict = dict.parent
+    end
+    return nothing
+end
+
 function Base.getindex(var::ScopedVariable{T})::T where T
-    cs = scope = current_scope()
+    scope = current_scope()
     if scope === nothing
         return var.initial_value
     end
-    val = check_cache(cs, var)
-    if val !== nothing
-        return something(val)
+
+    cache = scope_cache(scope)
+    _val = _get(cache.values, var, T)
+    if _val !== nothing
+        return something(_val)
     end
 
     val = var.initial_value
     while scope !== nothing
-        if haskey(scope.values, var)
-            val = scope.values[var]::T
+        _val = _get(scope.values, var, T)
+        if _val !== nothing
+            val = something(_val)
             break
         end
         scope = scope.parent
     end
-    if scope !== cs
-        # found the value in an upper scope, copy it down to the cache.
-        insert_cache!(cs, var, val)
-    end
+
+    # found the value in an upper scope, copy it down to the cache.
+    cache.values = ImmutableDict(cache.values, var => val)
+
     return val
 end
     
@@ -128,7 +138,7 @@ Execute `f` in a new scope with `var` set to `val`.
 function scoped(f, pair::Pair{<:ScopedVariable{T}, T}) where T
     enter_scope() do
         scope = current_scope()
-        __set_var!(scope, pair...)
+        scope.values = ImmutableDict{Any, Any}(pair...)
         f()
     end
 end
@@ -140,8 +150,9 @@ function scoped(f, pairs::Pair{<:ScopedVariable}...)
     # end
     enter_scope() do
         scope = current_scope()
-        for (var, val) in pairs
-            __set_var!(scope, var, val)
+        if length(pairs) > 1
+            scope.values = ImmutableDict{Any, Any}(scope.values, pairs...)
+            @show scope.values
         end
         f()
     end
