@@ -50,30 +50,8 @@ import Base: ImmutableDict
 
 mutable struct Scope
     const parent::Union{Nothing, Scope}
-    values::ImmutableDict{ScopedVariable, Any}
-    cache::ScopeCache
-    Scope(parent) = new(parent, ImmutableDict{ScopedVariable, Any}(), ScopeCache())
-end
-
-mutable struct ScopeCache
-    const scope::Scope
-    values::ImmutableDict{ScopedVariable, Any}
-    ScopeCache(scope) = new(scope, ImmutableDict{ScopedVariable, Any}())
-end
-
-const SCOPE_CACHE_TLS = gensym(:SCOPE_CACHE)
-function scope_cache(scope)
-    tls = task_local_storage()
-    new_cache = !haskey(tls, SCOPE_CACHE_TLS)
-    if !new_cache
-        cache = (@inbounds tls[SCOPE_CACHE_TLS])::ScopeCache
-        new_cache = cache.scope != scope
-    end
-    if new_cache
-        cache = ScopeCache(scope)
-        tls[SCOPE_CACHE_TLS] = cache
-    end
-    return cache::ScopeCache
+    @atomic values::ImmutableDict{ScopedVariable, Any}
+    Scope(parent) = new(parent, ImmutableDict{ScopedVariable, Any}())
 end
 
 function Base.show(io::IO, ::Scope)
@@ -93,16 +71,12 @@ function Base.getindex(var::ScopedVariable{T})::T where T
     if scope === nothing
         return var.initial_value
     end
-
-    cache = scope_cache(scope)
-    _val = _get(cache.values, var, T)
-    if _val !== nothing
-        return something(_val)
-    end
+    cs = scope
 
     val = var.initial_value
     while scope !== nothing
-        _val = _get(scope.values, var, T)
+        values = @atomic :acquire scope.values
+        _val = _get(values, var, T)
         if _val !== nothing
             val = something(_val)
             break
@@ -110,8 +84,15 @@ function Base.getindex(var::ScopedVariable{T})::T where T
         scope = scope.parent
     end
 
-    # found the value in an upper scope, copy it down to the cache.
-    cache.values = ImmutableDict(cache.values, var => val)
+    if cs != scope
+        # found the value in an upper scope, copy it down to the cache.
+        success = false
+        old = @atomic :acquire cs.values
+        while !success
+            new = ImmutableDict(old, var => val)
+            old, success = @atomicreplace :acquire_release :acquire cs.values old => new
+        end
+    end
 
     return val
 end
@@ -135,28 +116,19 @@ end
 
 Execute `f` in a new scope with `var` set to `val`.
 """
-function scoped(f, pair::Pair{<:ScopedVariable{T}, T}) where T
+function scoped(f, pair::Pair{<:ScopedVariable}, rest::Pair{<:ScopedVariable}...)
     enter_scope() do
         scope = current_scope()
-        scope.values = ImmutableDict{Any, Any}(pair...)
+        dict = ImmutableDict{ScopedVariable, Any}(pair...) 
+        for pair in rest
+            dict = ImmutableDict{ScopedVariable, Any}(dict, pair...)
+        end
+        @atomic :release scope.values = dict
         f()
     end
 end
 
-function scoped(f, pairs::Pair{<:ScopedVariable}...)
-    # This is valid, but also cheating
-    # if length(pairs) == 0
-    #     return f()
-    # end
-    enter_scope() do
-        scope = current_scope()
-        if length(pairs) > 1
-            scope.values = ImmutableDict{Any, Any}(scope.values, pairs...)
-            @show scope.values
-        end
-        f()
-    end
-end
+scoped(f) = enter_scope(f) # We can just call f() here
 
 include("payloadlogger.jl")
 
