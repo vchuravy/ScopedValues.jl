@@ -37,7 +37,7 @@ function setup_scope(N)
     end
 
     current_task().logstate = Base.CoreLogging.LogState(ScopedValues.ScopePayloadLogger(
-        ScopedValues.current_logger(), ScopedValues.Scope(ScopedValues.current_scope())))
+        ScopedValues.current_logger(), scope))
     return nothing
 end
 
