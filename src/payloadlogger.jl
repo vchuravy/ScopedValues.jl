@@ -13,8 +13,8 @@ function current_scope()
     return nothing
 end
 
-function enter_scope(f)
-    return Logging.with_logger(f, ScopePayloadLogger(current_logger(), Scope(current_scope())))
+function enter_scope(f, scope)
+    return Logging.with_logger(f, ScopePayloadLogger(current_logger(), scope))
 end
 
 # Forward actual logging interface:
