@@ -69,11 +69,12 @@ using BenchmarkTools
 
 const svar = ScopedValue(1)
 
+const depth = ScopedValue(0)
 function nth_scoped(f, n)
     if n <= 0
         f()
     else
-        scoped() do
+        scoped(depth => n) do
             nth_scoped(f, n-1)
         end
     end

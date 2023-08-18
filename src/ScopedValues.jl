@@ -1,7 +1,6 @@
 module ScopedValues
 
 export ScopedValue, scoped
-const CACHE_BREAKEVEN = 5
 
 if isdefined(Base, :ScopedValues)
     import Base.ScopedValues: ScopedValue, scoped
@@ -128,7 +127,7 @@ function scoped(f, pair::Pair{<:ScopedValue}, rest::Pair{<:ScopedValue}...)
     end
 end
 
-scoped(f) = enter_scope(f) # We can just call f() here
+scoped(f) = f()
 
 include("payloadlogger.jl")
 

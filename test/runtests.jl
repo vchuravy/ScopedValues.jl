@@ -46,11 +46,12 @@ import Base.Threads: @spawn
     end
 end
 
+const depth = ScopedValue(0)
 function nth_scoped(f, n)
     if n <= 0
         f()
     else
-        scoped() do
+        scoped(depth => n) do
             nth_scoped(f, n-1)
         end
     end
@@ -73,7 +74,7 @@ end
         end
     end
     scoped(gvar_float=>2.0) do
-        nth_scoped(ScopedValues.CACHE_BREAKEVEN) do
+        nth_scoped(15) do
             @test gvar_float[] == 2.0
             scoped(gvar_float => 3.0) do
                 @test gvar_float[] == 3.0
