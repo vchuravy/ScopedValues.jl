@@ -41,10 +41,11 @@ Base.eltype(::Type{ScopedValue{T}}) where {T} = T
 
 # If we wanted to be really fancy we could implement Scope,
 # as Ctrie
-mutable struct Scope{T}
+mutable struct Scope
     const parent::Union{Nothing, Scope}
-    const key::ScopedValue{T}
-    const value::T
+    const key::ScopedValue
+    const value::Any
+    Scope(parent, key::ScopedValue{T}, value::T) where T = new(parent, key, value)
 end
 Scope(parent, key::ScopedValue{T}, value) where T =
     Scope(parent, key, convert(T, value))
