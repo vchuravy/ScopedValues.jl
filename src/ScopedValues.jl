@@ -1,14 +1,14 @@
-module ScopedVariables
+module ScopedValues
 
-export ScopedVariable, scoped
+export ScopedValue, scoped
 const CACHE_BREAKEVEN = 5
 
-if isdefined(Base, :ScopedVariables)
-    import Base.ScopedVariables: ScopedVariable, scoped
+if isdefined(Base, :ScopedValues)
+    import Base.ScopedValues: ScopedValue, scoped
 else
 
 """
-    ScopedVariable(x)
+    ScopedValue(x)
 
 Create a container that propagates values across scopes.
 Use [`scoped`](@ref) to create and enter a new scope.
@@ -21,7 +21,7 @@ Dynamic scopes are propagated across tasks.
 
 # Examples
 ```jldoctest
-julia> const svar = ScopedVariable(1);
+julia> const svar = ScopedValue(1);
 
 julia> svar[]
 1
@@ -32,15 +32,15 @@ julia> scoped(svar => 2) do
 2
 ```
 """
-mutable struct ScopedVariable{T}
+mutable struct ScopedValue{T}
     const initial_value::T
-    ScopedVariable{T}(initial_value) where {T} = new{T}(initial_value)
+    ScopedValue{T}(initial_value) where {T} = new{T}(initial_value)
 end
-ScopedVariable(initial_value::T) where {T} = ScopedVariable{T}(initial_value)
-# Base.hash(var::ScopedVariable) = Base.objectid(var)
-# Base.isequal(a::ScopedVariable, b::ScopedVariable) = Base.objectid(a) == Base.objectid(b) 
+ScopedValue(initial_value::T) where {T} = ScopedValue{T}(initial_value)
+# Base.hash(var::ScopedValue) = Base.objectid(var)
+# Base.isequal(a::ScopedValue, b::ScopedValue) = Base.objectid(a) == Base.objectid(b) 
 
-Base.eltype(::Type{ScopedVariable{T}}) where {T} = T
+Base.eltype(::Type{ScopedValue{T}}) where {T} = T
 
 # Split Scope and ScopeCache into two separate entities
 # Scope is read-only after construction, and ScopeCache is task-local
@@ -50,8 +50,8 @@ import Base: ImmutableDict
 
 mutable struct Scope
     const parent::Union{Nothing, Scope}
-    @atomic values::ImmutableDict{ScopedVariable, Any}
-    Scope(parent) = new(parent, ImmutableDict{ScopedVariable, Any}())
+    @atomic values::ImmutableDict{ScopedValue, Any}
+    Scope(parent) = new(parent, ImmutableDict{ScopedValue, Any}())
 end
 
 function Base.show(io::IO, ::Scope)
@@ -66,7 +66,7 @@ end
     return nothing
 end
 
-function Base.getindex(var::ScopedVariable{T})::T where T
+function Base.getindex(var::ScopedValue{T})::T where T
     scope = current_scope()
     if scope === nothing
         return var.initial_value
@@ -97,31 +97,31 @@ function Base.getindex(var::ScopedVariable{T})::T where T
     return val
 end
     
-function Base.show(io::IO, var::ScopedVariable)
-    print(io, ScopedVariable)
+function Base.show(io::IO, var::ScopedValue)
+    print(io, ScopedValue)
     print(io, '{', eltype(var), '}')
     print(io, '(')
     show(io, var[])
     print(io, ')')
 end
 
-function __set_var!(scope::Scope, var::ScopedVariable{T}, val::T) where T
+function __set_var!(scope::Scope, var::ScopedValue{T}, val::T) where T
     # internal function!
     @assert !haskey(scope.values, var)
     scope.values[var] = val
 end
 
 """
-    scoped(f, var::ScopedVariable{T} => val::T)
+    scoped(f, var::ScopedValue{T} => val::T)
 
 Execute `f` in a new scope with `var` set to `val`.
 """
-function scoped(f, pair::Pair{<:ScopedVariable}, rest::Pair{<:ScopedVariable}...)
+function scoped(f, pair::Pair{<:ScopedValue}, rest::Pair{<:ScopedValue}...)
     enter_scope() do
         scope = current_scope()
-        dict = ImmutableDict{ScopedVariable, Any}(pair...) 
+        dict = ImmutableDict{ScopedValue, Any}(pair...) 
         for pair in rest
-            dict = ImmutableDict{ScopedVariable, Any}(dict, pair...)
+            dict = ImmutableDict{ScopedValue, Any}(dict, pair...)
         end
         @atomic :release scope.values = dict
         f()
@@ -134,4 +134,4 @@ include("payloadlogger.jl")
 
 end # isdefined
 
-end # module ScopedVariables
+end # module ScopedValues

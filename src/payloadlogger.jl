@@ -28,9 +28,9 @@ Logging.catch_exceptions(payload::ScopePayloadLogger, args...) =
     Logging.catch_exceptions(payload.logger, args...)
 
 """
-    ContextVariablesX.with_logger(f, logger::AbstractLogger)
+    ScopedValues.with_logger(f, logger::AbstractLogger)
 
-Like `Logging.with_logger` but properly propagate the context variables.
+Like `Logging.with_logger` but properly propagate the scope.
 """
 function with_logger(f, logger::AbstractLogger)
     @nospecialize
@@ -44,7 +44,7 @@ function with_logger(f, logger::AbstractLogger)
 end
 
 """
-    ContextVariablesX.current_logger() -> logger::AbstractLogger
+    ScopedValues.current_logger() -> logger::AbstractLogger
 
 Like `Logging.current_logger` but unwraps `ScopePayloadLogger`.
 """

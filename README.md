@@ -1,6 +1,6 @@
-# ScopedVariables.jl
+# ScopedValues.jl
 
-Implement dynamically scoped variables for Julia.
+Implement dynamically scoped values for Julia.
 This package was primarly inspired by [ContextVariablesX.jl](https://github.com/tkf/ContextVariablesX.jl),
 it's corresponding [pull-request to Julia base](https://github.com/JuliaLang/julia/pull/35833), and
 Java's [JEPS446](https://openjdk.org/jeps/446).
@@ -10,32 +10,32 @@ It has been submitted to Julia as a [JULEP](https://github.com/JuliaLang/julia/p
 # Usage
 
 ```julia
-using ScopedVariables
+using ScopedValues
 
-const svar = ScopedVariable(1)
+const svar = ScopedValue(1)
 
 @show svar[]
 
-# Enter a new dynamic scope and set variable
+# Enter a new dynamic scope and set value
 scoped(svar => 2) do
     @show svar
 end
 
-# While a ScopedVariable contents are constant
+# While a ScopedValue contents are constant
 # You can store mutable values.
-const svar_dict = ScopedVariable(Dict())
+const svar_dict = ScopedValue(Dict())
 
 # Important we are using `merge` to "unshare" the mutable values
-# across the different views of the same scoped variable.
+# across the different views of the same scoped value.
 scoped(svar_dict => merge(svar_dict, Dict(:a => 10))) do
     @show svar_dict[][:a]
 end
 ```
 
-Scoped variables are inherited across tasks:
+scoped values are inherited across tasks:
 
 ```julia
-const LEVEL = ScopedVariable(:GUEST)
+const LEVEL = ScopedValue(:GUEST)
 
 function serve(request, response)
     level = isAdmin(request) ? :ADMIN : :GUEST
@@ -62,12 +62,12 @@ end
 
 v"1.10.0-beta1" AMD Ryzen 7 3700X 8-Core Processor
 
-## ScopedVariables
+## ScopedValues
 ```julia
-using ScopedVariables
+using ScopedValues
 using BenchmarkTools
 
-const svar = ScopedVariable(1)
+const svar = ScopedValue(1)
 
 function nth_scoped(f, n)
     if n <= 0
@@ -201,7 +201,7 @@ It uses a Julia `Dict` under the hood and it not safe for concurrent
 access with multiple tasks. This is the primary performance difference.
 
 Furthermore on `with_context` a copy of the context is created and passed
-to the lambda. ScopedVariables avoid this copy, but has a higher cost for
+to the lambda. ScopedValues avoid this copy, but has a higher cost for
 initial access.
 
 ```julia

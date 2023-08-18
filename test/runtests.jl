@@ -1,15 +1,15 @@
 using Test
-using ScopedVariables
+using ScopedValues
 
 @testset "errors" begin
-    var = ScopedVariable(1)
+    var = ScopedValue(1)
     @test_throws MethodError var[] = 2
     scoped() do
         @test_throws MethodError var[] = 2
     end
 end
 
-const gvar = ScopedVariable(1)
+const gvar = ScopedValue(1)
 @testset "inheritance" begin
     @test gvar[] == 1
     scoped() do
@@ -25,9 +25,9 @@ const gvar = ScopedVariable(1)
     @test gvar[] == 1
 end
 
-const gvar_float = ScopedVariable(1.0)
+const gvar_float = ScopedValue(1.0)
 
-@testset "multiple scoped variables" begin
+@testset "multiple scoped values" begin
     scoped(gvar => 2, gvar_float => 2.0) do
         @test gvar[] == 2
         @test gvar_float[] == 2.0
@@ -73,7 +73,7 @@ end
         end
     end
     scoped(gvar_float=>2.0) do
-        nth_scoped(ScopedVariables.CACHE_BREAKEVEN) do
+        nth_scoped(ScopedValues.CACHE_BREAKEVEN) do
             @test gvar_float[] == 2.0
             scoped(gvar_float => 3.0) do
                 @test gvar_float[] == 3.0

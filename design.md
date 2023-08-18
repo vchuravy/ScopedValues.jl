@@ -1,7 +1,7 @@
 # Design
 
 ## Goals
-- Immutable dynamically scoped variables
+- Immutable dynamically scoped values
 - Inheritance of dynamical scope across tasks
 - Minimize copying
 

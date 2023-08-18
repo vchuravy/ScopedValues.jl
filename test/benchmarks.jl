@@ -1,7 +1,7 @@
 using BenchmarkTools
-using ScopedVariables
+using ScopedValues
 
-const svar = ScopedVariable(1)
+const svar = ScopedValue(1)
 
 @benchmark $svar[] # 5.4ns
 
