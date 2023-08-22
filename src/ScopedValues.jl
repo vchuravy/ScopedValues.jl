@@ -3,7 +3,7 @@ module ScopedValues
 export ScopedValue, scoped
 
 if isdefined(Base, :ScopedValues)
-    import Base.ScopedValues: ScopedValue, scoped
+    import Base.ScopedValues: ScopedValue, scoped, Scope, current_scope
 else
 
 """
@@ -47,6 +47,13 @@ mutable struct Scope
 end
 Scope(parent, key::ScopedValue{T}, value) where T =
     Scope(parent, key, convert(T, value))
+
+"""
+    current_scope()::Union{Nothing, Scope}
+
+Return the current dynamic scope.
+"""
+function current_scope end
 
 function Base.show(io::IO, scope::Scope)
     print(io, Scope, "(")
