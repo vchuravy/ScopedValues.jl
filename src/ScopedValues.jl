@@ -33,9 +33,7 @@ julia> scoped(svar => 2) do
 """
 mutable struct ScopedValue{T}
     const initial_value::T
-    ScopedValue{T}(initial_value) where {T} = new{T}(initial_value)
 end
-ScopedValue(initial_value::T) where {T} = ScopedValue{T}(initial_value)
 
 Base.eltype(::Type{ScopedValue{T}}) where {T} = T
 
@@ -58,7 +56,9 @@ function Base.show(io::IO, scope::Scope)
             if !isempty(seen)
                 print(io, ", ")
             end
-            print(io, typeof(scope.key), "@", Base.objectid(scope.key), " => ")
+            print(io, typeof(scope.key), "@")
+            show(io, Base.objectid(scope.key))
+            print(io, " => ")
             show(IOContext(io, :typeinfo => eltype(scope.key)), scope.value)
             push!(seen, scope.key)
         end
