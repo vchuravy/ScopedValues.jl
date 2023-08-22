@@ -68,3 +68,41 @@ end
         @test sprint(show, ScopedValues.current_scope()) == "ScopedValues.Scope(ScopedValue{$Int}@$objid => 2)"
     end
 end
+
+const depth = ScopedValue(0)
+function nth_scoped(f, n)
+    if n <= 0
+        f()
+    else
+        scoped(depth => n) do
+            nth_scoped(f, n-1)
+        end
+    end
+end
+
+
+@testset "nested scoped" begin
+    @testset for depth in 1:16
+        nth_scoped(depth) do
+            @test svar_float[] == 1.0
+        end
+        scoped(svar_float=>2.0) do
+            nth_scoped(depth) do
+                @test svar_float[] == 2.0
+            end
+        end
+        nth_scoped(depth) do
+            scoped(svar_float=>2.0) do
+                @test svar_float[] == 2.0
+            end
+        end
+    end
+    scoped(svar_float=>2.0) do
+        nth_scoped(15) do
+            @test svar_float[] == 2.0
+            scoped(svar_float => 3.0) do
+                @test svar_float[] == 3.0
+            end
+        end
+    end
+end
