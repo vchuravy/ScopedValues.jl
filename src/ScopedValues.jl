@@ -50,8 +50,21 @@ end
 Scope(parent, key::ScopedValue{T}, value) where T =
     Scope(parent, key, convert(T, value))
 
-function Base.show(io::IO, ::Scope)
-    print(io, Scope)
+function Base.show(io::IO, scope::Scope)
+    print(io, Scope, "(")
+    seen = Set{ScopedValue}()
+    while scope !== nothing
+        if scope.key ∉ seen
+            if !isempty(seen)
+                print(io, ", ")
+            end
+            print(io, typeof(scope.key), "@", Base.objectid(scope.key), " => ")
+            show(IOContext(io, :typeinfo => eltype(scope.key)), scope.value)
+            push!(seen, scope.key)
+        end
+        scope = scope.parent
+    end
+    print(io, ")")
 end
 
 function Base.getindex(var::ScopedValue{T})::T where T
@@ -69,7 +82,7 @@ function Base.show(io::IO, var::ScopedValue)
     print(io, ScopedValue)
     print(io, '{', eltype(var), '}')
     print(io, '(')
-    show(io, var[])
+    show(IOContext(io, :typeinfo => eltype(var)), var[])
     print(io, ')')
 end
 
