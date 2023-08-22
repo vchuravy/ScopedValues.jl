@@ -3,6 +3,7 @@ using ScopedValues
 
 @testset "errors" begin
     @test ScopedValue{Float64}(1)[] == 1.0
+    @test_throws InexactError ScopedValue{Int}(1.5)
     var = ScopedValue(1)
     @test_throws MethodError var[] = 2
     scoped() do
