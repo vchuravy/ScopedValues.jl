@@ -3,7 +3,7 @@ module ScopedValues
 export ScopedValue, scoped
 
 if isdefined(Base, :ScopedValues)
-    import Base.ScopedValues: ScopedValue, scoped
+    import Base.ScopedValues: ScopedValue, scoped, Scope, current_scope
 else
 
 """
@@ -33,9 +33,7 @@ julia> scoped(svar => 2) do
 """
 mutable struct ScopedValue{T}
     const initial_value::T
-    ScopedValue{T}(initial_value) where {T} = new{T}(initial_value)
 end
-ScopedValue(initial_value::T) where {T} = ScopedValue{T}(initial_value)
 
 Base.eltype(::Type{ScopedValue{T}}) where {T} = T
 
@@ -50,8 +48,30 @@ end
 Scope(parent, key::ScopedValue{T}, value) where T =
     Scope(parent, key, convert(T, value))
 
-function Base.show(io::IO, ::Scope)
-    print(io, Scope)
+"""
+    current_scope()::Union{Nothing, Scope}
+
+Return the current dynamic scope.
+"""
+function current_scope end
+
+function Base.show(io::IO, scope::Scope)
+    print(io, Scope, "(")
+    seen = Set{ScopedValue}()
+    while scope !== nothing
+        if scope.key ∉ seen
+            if !isempty(seen)
+                print(io, ", ")
+            end
+            print(io, typeof(scope.key), "@")
+            show(io, Base.objectid(scope.key))
+            print(io, " => ")
+            show(IOContext(io, :typeinfo => eltype(scope.key)), scope.value)
+            push!(seen, scope.key)
+        end
+        scope = scope.parent
+    end
+    print(io, ")")
 end
 
 function Base.getindex(var::ScopedValue{T})::T where T
@@ -69,7 +89,7 @@ function Base.show(io::IO, var::ScopedValue)
     print(io, ScopedValue)
     print(io, '{', eltype(var), '}')
     print(io, '(')
-    show(io, var[])
+    show(IOContext(io, :typeinfo => eltype(var)), var[])
     print(io, ')')
 end
 

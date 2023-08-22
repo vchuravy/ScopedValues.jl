@@ -2,54 +2,71 @@ using Test
 using ScopedValues
 
 @testset "errors" begin
+    @test ScopedValue{Float64}(1)[] == 1.0
+    @test_throws InexactError ScopedValue{Int}(1.5)
     var = ScopedValue(1)
     @test_throws MethodError var[] = 2
     scoped() do
         @test_throws MethodError var[] = 2
     end
+    @test_throws MethodError ScopedValue{Int}()
+    @test_throws MethodError ScopedValue()
 end
 
-const gvar = ScopedValue(1)
+const svar = ScopedValue(1)
 @testset "inheritance" begin
-    @test gvar[] == 1
+    @test svar[] == 1
     scoped() do
-        @test gvar[] == 1
+        @test svar[] == 1
         scoped() do
-            @test gvar[] == 1
+            @test svar[] == 1
         end
-        scoped(gvar => 2) do
-            @test gvar[] == 2
+        scoped(svar => 2) do
+            @test svar[] == 2
         end
-        @test gvar[] == 1
+        @test svar[] == 1
     end
-    @test gvar[] == 1
+    @test svar[] == 1
 end
 
-const gvar_float = ScopedValue(1.0)
+const svar_float = ScopedValue(1.0)
 
 @testset "multiple scoped values" begin
-    scoped(gvar => 2, gvar_float => 2.0) do
-        @test gvar[] == 2
-        @test gvar_float[] == 2.0
+    scoped(svar => 2, svar_float => 2.0) do
+        @test svar[] == 2
+        @test svar_float[] == 2.0
+    end
+    scoped(svar => 2, svar => 3) do
+        @test svar[] == 3
     end
 end
 
 emptyf() = nothing
 
 @testset "conversion" begin
-    scoped(emptyf, gvar_float=>2)
-    @test_throws MethodError scoped(emptyf, gvar_float=>"hello")
+    scoped(emptyf, svar_float=>2)
+    @test_throws MethodError scoped(emptyf, svar_float=>"hello")
 end
 
 import Base.Threads: @spawn
 @testset "tasks" begin
     @test fetch(@spawn begin
-        gvar[]
+        svar[]
     end) == 1
-    scoped(gvar => 2) do
+    scoped(svar => 2) do
         @test fetch(@spawn begin
-            gvar[]
+            svar[]
         end) == 2
+    end
+end
+
+@testset "show" begin
+    @test sprint(show, svar) == "ScopedValue{$Int}(1)"
+    @test sprint(show, ScopedValues.current_scope()) == "nothing"
+    scoped(svar => 2.0) do
+        @test sprint(show, svar) == "ScopedValue{$Int}(2)"
+        objid = sprint(show, Base.objectid(svar))
+        @test sprint(show, ScopedValues.current_scope()) == "ScopedValues.Scope(ScopedValue{$Int}@$objid => 2)"
     end
 end
 
@@ -64,27 +81,28 @@ function nth_scoped(f, n)
     end
 end
 
+
 @testset "nested scoped" begin
     @testset for depth in 1:16
         nth_scoped(depth) do
-            @test gvar_float[] == 1.0
+            @test svar_float[] == 1.0
         end
-        scoped(gvar_float=>2.0) do
+        scoped(svar_float=>2.0) do
             nth_scoped(depth) do
-                @test gvar_float[] == 2.0
+                @test svar_float[] == 2.0
             end
         end
         nth_scoped(depth) do
-            scoped(gvar_float=>2.0) do
-                @test gvar_float[] == 2.0
+            scoped(svar_float=>2.0) do
+                @test svar_float[] == 2.0
             end
         end
     end
-    scoped(gvar_float=>2.0) do
+    scoped(svar_float=>2.0) do
         nth_scoped(15) do
-            @test gvar_float[] == 2.0
-            scoped(gvar_float => 3.0) do
-                @test gvar_float[] == 3.0
+            @test svar_float[] == 2.0
+            scoped(svar_float => 3.0) do
+                @test svar_float[] == 3.0
             end
         end
     end
