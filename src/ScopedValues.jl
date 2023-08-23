@@ -1,9 +1,9 @@
 module ScopedValues
 
-export ScopedValue, scoped
+export ScopedValue, scoped, @scoped
 
 if isdefined(Base, :ScopedValues)
-    import Base.ScopedValues: ScopedValue, scoped, Scope, current_scope
+    import Base.ScopedValues: ScopedValue, scoped, @scoped, Scope, current_scope
 else
 
 """
@@ -47,6 +47,13 @@ mutable struct Scope
 end
 Scope(parent, key::ScopedValue{T}, value) where T =
     Scope(parent, key, convert(T, value))
+
+function Scope(scope, pairs::Pair{<:ScopedValue}...)
+    for pair in pairs
+        scope = Scope(scope, pair...)
+    end
+    return scope
+end
 
 """
     current_scope()::Union{Nothing, Scope}
@@ -99,11 +106,8 @@ end
 Execute `f` in a new scope with `var` set to `val`.
 """
 function scoped(f, pair::Pair{<:ScopedValue}, rest::Pair{<:ScopedValue}...)
-    scope = current_scope()
-    scope = Scope(scope, pair...)
-    for pair in rest
-        scope = Scope(scope, pair...)
-    end
+    @nospecialize
+    scope = Scope(current_scope(), pair, rest...)
     enter_scope(scope) do
         f()
     end
@@ -112,6 +116,43 @@ end
 scoped(f) = f()
 
 include("payloadlogger.jl")
+
+
+import Base.CoreLogging: LogState
+"""
+    @scoped vars... expr
+
+Macro version of `scoped(f, vars...)` but with `expr` instead of `f` function.
+This is similar to using [`scoped`](@ref) with a `do` block, but avoids creating
+a closure.
+"""
+macro scoped(exprs...)
+    ex = last(exprs)
+    if length(exprs) > 1
+        exprs = exprs[1:end-1]
+    else
+        exprs = ()
+    end
+    for expr in exprs
+        if expr.head !== :call || first(expr.args) !== :(=>)
+            error("@scoped expects arguments of the form `A => 2` got $expr")
+        end
+    end
+    exprs = map(esc, exprs)
+    ct = gensym(:ct)
+    current_logstate = gensym(:current_logstate)
+    body = Expr(:tryfinally, esc(ex), :($(ct).logstate = $(current_logstate)))
+    quote
+        $(ct) = $(Base.current_task)()
+        $(current_logstate) = $(ct).logstate::Union{Nothing, LogState}
+        scope = $(Scope)($(current_scope)(), $(exprs...))
+        if scope !== nothing
+            logger = $(ScopePayloadLogger)($(current_logger)(), scope)
+            $(ct).logstate = $(LogState)(logger)
+        end
+        $body
+    end
+end
 
 end # isdefined
 
