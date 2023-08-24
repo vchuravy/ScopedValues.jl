@@ -37,10 +37,27 @@ end
 
 Base.eltype(::Type{ScopedValue{T}}) where {T} = T
 
+
+struct DefaultScope end
+
+Base.getindex(::DefaultScope, var::ScopedValue) = var.initial_value
+
+"""
+    current_scope()::AbstractScope
+
+Return the current dynamic scope.
+"""
+function current_scope end
+
+function Base.getindex(var::ScopedValue{T})::T where T
+    scope = current_scope()
+    return scope[var]
+end
+
 # If we wanted to be really fancy we could implement Scope,
 # as Ctrie
 mutable struct Scope
-    const parent::Union{Nothing, Scope}
+    const parent::Union{Scope, DefaultScope}
     const key::ScopedValue
     const value::Any
     Scope(parent, key::ScopedValue{T}, value::T) where T = new(parent, key, value)
@@ -48,17 +65,15 @@ end
 Scope(parent, key::ScopedValue{T}, value) where T =
     Scope(parent, key, convert(T, value))
 
-"""
-    current_scope()::Union{Nothing, Scope}
+const AbstractScope = Union{DefaultScope, Scope}
 
-Return the current dynamic scope.
-"""
-function current_scope end
+
 
 function Base.show(io::IO, scope::Scope)
     print(io, Scope, "(")
     seen = Set{ScopedValue}()
-    while scope !== nothing
+    while scope !== DefaultScope()
+        # TODO make this general
         if scope.key ∉ seen
             if !isempty(seen)
                 print(io, ", ")
@@ -74,15 +89,11 @@ function Base.show(io::IO, scope::Scope)
     print(io, ")")
 end
 
-function Base.getindex(var::ScopedValue{T})::T where T
-    scope = current_scope()
-    while scope !== nothing
-        if scope.key === var
-            return scope.value::T
-        end
-        scope = scope.parent
+function Base.getindex(scope::Scope, var::ScopedValue{T}) where T
+    if scope.key == var
+        return scope.value::T
     end
-    return var.initial_value
+    return scope.parent[var]::T
 end
 
 function Base.show(io::IO, var::ScopedValue)
