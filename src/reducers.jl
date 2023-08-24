@@ -13,7 +13,7 @@ end
 
 split(r::Reducer{T, Op, Init}) where {T, Op, Init} = Reducer(r.init()::T, r.op, r.init)
 function join!(r::Reducer{T, Op, Init}, other_r::Reducer{T, Op, Init}) where {T, Op, Init}
-    r[] = other_[]
+    r[] = other_r[]
 end
 
 function split(f, val::ScopedValue{<:Reducer})
