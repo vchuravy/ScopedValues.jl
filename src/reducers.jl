@@ -12,8 +12,8 @@ function Base.setindex!(r::Reducer{T, Op}, val::T) where {T, Op}
 end
 
 split(r::Reducer{T, Op, Init}) where {T, Op, Init} = Reducer(r.init()::T, r.op, r.init)
-function join!(r::Reducer{T, Op, Init}, r2::Reducer{T, Op, Init}) where {T, Op, Init}
-    r[] = r2[]
+function join!(r::Reducer{T, Op, Init}, other_r::Reducer{T, Op, Init}) where {T, Op, Init}
+    r[] = other_[]
 end
 
 function split(f, val::ScopedValue{<:Reducer})
@@ -21,5 +21,5 @@ function split(f, val::ScopedValue{<:Reducer})
     @scoped val => reducer begin
         f()
     end
-    join!(val, reducer)
+    join!(val[], reducer)
 end
