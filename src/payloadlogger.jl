@@ -2,7 +2,7 @@ using Logging: AbstractLogger, Logging
 
 struct ScopePayloadLogger <: AbstractLogger
     logger::AbstractLogger
-    scope::Scope
+    scope::AbstractScope
 end
 
 function current_scope()
@@ -10,7 +10,7 @@ function current_scope()
     if logger isa ScopePayloadLogger
         return logger.scope
     end
-    return nothing
+    return DefaultScope()
 end
 
 function enter_scope(f, scope)
@@ -38,7 +38,7 @@ function with_logger(f, logger::AbstractLogger)
     if cpl isa ScopePayloadLogger
         scope = cpl.scope
     else
-        scope = Scope(nothing)
+        scope = DefaultScope()
     end
     return Logging.with_logger(f, ScopePayloadLogger(logger, scope))
 end
