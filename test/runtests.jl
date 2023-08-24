@@ -66,7 +66,7 @@ end
     scoped(svar => 2.0) do
         @test sprint(show, svar) == "ScopedValue{$Int}(2)"
         objid = sprint(show, Base.objectid(svar))
-        @test sprint(show, ScopedValues.current_scope()) == "ScopedValues.Scope(ScopedValue{$Int}@$objid => 2)"
+        @test sprint(show, ScopedValues.current_scope()) == "ScopedValues.Scope()"
     end
 end
 
@@ -105,5 +105,20 @@ end
                 @test svar_float[] == 3.0
             end
         end
+    end
+end
+
+scoped(svar_float=>2.0) do
+    nth_scoped(30) do
+        scope = ScopedValues.collapse(ScopedValues.current_scope())
+        ScopedValues.enter_scope(scope) do
+            @test svar_float[] == 2.0
+        end
+    end
+end
+
+scoped(svar_float=>2.0) do
+    nth_scoped(96) do
+        @test svar_float[] == 2.0
     end
 end
