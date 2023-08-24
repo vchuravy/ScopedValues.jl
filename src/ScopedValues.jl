@@ -156,4 +156,6 @@ end
 
 end # isdefined
 
+include("reducers.jl")
+
 end # module ScopedValues
