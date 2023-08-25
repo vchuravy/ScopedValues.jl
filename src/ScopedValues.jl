@@ -34,6 +34,7 @@ julia> scoped(svar => 2) do
 mutable struct ScopedValue{T}
     const initial_value::T
 end
+Base.hash(sv::ScopedValue) = objectid(sv)
 
 Base.eltype(::Type{ScopedValue{T}}) where {T} = T
 
