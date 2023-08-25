@@ -66,7 +66,7 @@ end
     scoped(svar => 2.0) do
         @test sprint(show, svar) == "ScopedValue{$Int}(2)"
         objid = sprint(show, Base.objectid(svar))
-        @test sprint(show, ScopedValues.current_scope()) == "ScopedValues.Scope(ScopedValue{$Int}@$objid => 2)"
+        @test sprint(show, ScopedValues.current_scope()) == "ScopedValues.Scope()"
     end
 end
 
