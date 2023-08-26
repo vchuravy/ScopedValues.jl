@@ -6,6 +6,13 @@
 using BenchmarkTools
 using ScopedValues
 
+function set_scope!(scope)
+    # DONT USE OUTSIDE OF BENCHMARKING
+    current_task().logstate = Base.CoreLogging.LogState(ScopedValues.ScopePayloadLogger(
+        ScopedValues.current_logger(), scope))
+end
+
+
 const SUITE = BenchmarkGroup()
 
 const svar = ScopedValue(1)
@@ -34,15 +41,31 @@ function setup_scope(N)
     for i in 1:N
         scope = ScopedValues.Scope(scope, depth, i)
     end
-
-    current_task().logstate = Base.CoreLogging.LogState(ScopedValues.ScopePayloadLogger(
-        ScopedValues.current_logger(), scope))
+    set_scope!(scope)
     return nothing
 end
 
 SUITE["DEPTH"] = BenchmarkGroup()
-for depth in 1:32
+for depth in 1:64
     SUITE["DEPTH"]["emtpyf, depth=$depth"] = @benchmarkable nth_scoped(emptyf, $depth)
     SUITE["DEPTH"]["scope + access, depth=$depth"] = @benchmarkable nth_scoped(()->svar[], $depth)
     SUITE["DEPTH"]["access, depth=$depth"] = @benchmarkable svar[] setup=setup_scope($depth)
+end
+
+for depth in (2^i for i in 0:12)
+    SUITE["DEPTH"]["access 2^i, depth=$depth"] = @benchmarkable svar[] setup=setup_scope($depth)
+end
+
+function wide_scope(N)
+    scope = nothing
+    for i in 1:N
+        scope = ScopedValues.Scope(scope, ScopedValue(0), i)
+    end
+    set_scope!(scope)
+    return nothing
+end
+
+SUITE["WIDTH"] = BenchmarkGroup()
+for width in (2^i for i in 0:12)
+    SUITE["WIDTH"]["access 2^i, width=$width"] = @benchmarkable svar[] setup=wide_scope($width)
 end
