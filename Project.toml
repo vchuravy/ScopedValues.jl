@@ -9,4 +9,4 @@ Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
 
 [compat]
 julia = "1.8"
-HashArrayMappedTries = "0.1"
+HashArrayMappedTries = "0.2"
