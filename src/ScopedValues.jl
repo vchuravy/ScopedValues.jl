@@ -1,101 +1,159 @@
 module ScopedValues
 
-export ScopedValue, scoped
+export ScopedValue, with
 
 if isdefined(Base, :ScopedValues)
-    import Base.ScopedValues: ScopedValue, scoped, Scope, current_scope
+    import Base.ScopedValues: ScopedValue, with, Scope, current_scope, get
 else
 
 using HashArrayMappedTries
+import HashArrayMappedTries: insert
 
 """
     ScopedValue(x)
 
-Create a container that propagates values across scopes.
-Use [`scoped`](@ref) to create and enter a new scope.
+Create a container that propagates values across dynamic scopes.
+Use [`with`](@ref) to create and enter a new dynamic scope.
 
-Values can only be set when entering a new scope,
+Values can only be set when entering a new dynamic scope,
 and the value referred to will be constant during the
-execution of a scope.
+execution of a dynamic scope.
 
 Dynamic scopes are propagated across tasks.
 
 # Examples
-```jldoctest
-julia> const svar = ScopedValue(1);
 
-julia> svar[]
+```jldoctest
+julia> const sval = ScopedValue(1);
+
+julia> sval[]
 1
 
-julia> scoped(svar => 2) do
-           svar[]
+julia> with(sval => 2) do
+           sval[]
        end
 2
+
+julia> sval[]
+1
 ```
+
+!!! compat "Julia 1.11"
+    Scoped values were introduced in Julia 1.11. In Julia 1.8+ a compatible
+    implementation is available from the package ScopedValues.jl.
 """
 mutable struct ScopedValue{T}
-    const initial_value::T
+    const has_default::Bool
+    const default::T
+    ScopedValue{T}() where T = new(false)
+    ScopedValue{T}(val) where T = new{T}(true, val)
+    ScopedValue(val::T) where T = new{T}(true, val)
 end
 
-Base.eltype(::Type{ScopedValue{T}}) where {T} = T
+Base.eltype(::ScopedValue{T}) where {T} = T
 
-# If we wanted to be really fancy we could implement Scope,
-# as Ctrie
+"""
+    isassigned(val::ScopedValue)
+
+Test if the ScopedValue has a default value.
+"""
+Base.isassigned(val::ScopedValue) = val.has_default
+
+const ScopeStorage = HAMT{ScopedValue, Any}
+
 mutable struct Scope
-    const hamt::HAMT{ScopedValue, Any}
+    values::ScopeStorage
 end
-Scope(hamt::HAMT, key::ScopedValue{T}, value) where T =
-    Scope(insert(hamt, key, convert(T, value)))
-Scope(::Nothing) = Scope(HAMT{ScopedValue, Any}())
 
-Scope(scope::Scope, key::ScopedValue, value) =
-    Scope(scope.hamt, key, value)
-
-Scope(::Nothing, key::ScopedValue, value) =
-    Scope(HAMT{ScopedValue, Any}(), key, value)
+function Scope(parent::Union{Nothing, Scope}, key::ScopedValue{T}, value) where T
+    val = convert(T, value)
+    if parent === nothing
+        values = ScopeStorage()
+    else
+        values = parent.values
+    end
+    values = insert(values, key, val)
+    return Scope(values)
+end
 
 function Scope(scope, pairs::Pair{<:ScopedValue}...)
     for pair in pairs
-        # TODO implement batching
         scope = Scope(scope, pair...)
     end
-    return scope
+    return scope::Scope
 end
-
-"""
-    current_scope()::Union{Nothing, Scope}
-
-Return the current dynamic scope.
-"""
-function current_scope end
+Scope(::Nothing) = nothing
 
 function Base.show(io::IO, scope::Scope)
     print(io, Scope, "(")
+    first = true
+    for (key, value) in scope.values
+        if first
+            first = false
+        else
+            print(io, ", ")
+        end
+        print(io, typeof(key), "@")
+        show(io, Base.objectid(key))
+        print(io, " => ")
+        show(IOContext(io, :typeinfo => eltype(key)), value)
+    end
     print(io, ")")
 end
 
-function Base.getindex(var::ScopedValue{T})::T where T
+struct NoValue end
+const novalue = NoValue()
+
+"""
+    get(val::ScopedValue{T})::Union{Nothing, Some{T}}
+
+If the scoped value isn't set and doesn't have a default value,
+return `nothing`. Otherwise returns `Some{T}` with the current
+value.
+"""
+function get(val::ScopedValue{T}) where {T}
+    # Inline current_scope to avoid doing the type assertion twice.
     scope = current_scope()
     if scope === nothing
-        return var.initial_value
+        isassigned(val) && return Some(val.default)
+        return nothing
     end
-    return @inline get(scope.hamt, var, var.initial_value)
+    scope = scope::Scope
+    if isassigned(val)
+        return Some(Base.get(scope.values, val, val.default)::T)
+    else
+        v = Base.get(scope.values, val, novalue)
+        v === novalue || return Some(v::T)
+    end
+    return nothing
 end
 
-function Base.show(io::IO, var::ScopedValue)
+function Base.getindex(val::ScopedValue{T})::T where T
+    maybe = get(val)
+    maybe === nothing && throw(KeyError(val))
+    return something(maybe)::T
+end
+
+function Base.show(io::IO, val::ScopedValue)
     print(io, ScopedValue)
-    print(io, '{', eltype(var), '}')
+    print(io, '{', eltype(val), '}')
     print(io, '(')
-    show(IOContext(io, :typeinfo => eltype(var)), var[])
+    v = get(val)
+    if v === nothing
+        print(io, "undefined")
+    else
+        show(IOContext(io, :typeinfo => eltype(val)), something(v))
+    end
     print(io, ')')
 end
 
 """
-    scoped(f, var::ScopedValue{T} => val::T)
+    with(f, var::ScopedValue{T} => val::T)
 
 Execute `f` in a new scope with `var` set to `val`.
 """
-function scoped(f, pair::Pair{<:ScopedValue}, rest::Pair{<:ScopedValue}...)
+function with(f, pair::Pair{<:ScopedValue}, rest::Pair{<:ScopedValue}...)
+    @nospecialize
     scope = current_scope()
     scope = Scope(scope, pair...)
     for pair in rest
@@ -106,10 +164,12 @@ function scoped(f, pair::Pair{<:ScopedValue}, rest::Pair{<:ScopedValue}...)
     end
 end
 
-scoped(f) = f()
+with(@nospecialize(f)) = f()
 
 include("payloadlogger.jl")
 
 end # isdefined
+
+@deprecate scoped with
 
 end # module ScopedValues
