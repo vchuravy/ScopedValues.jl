@@ -4,105 +4,112 @@ using ScopedValues
 @testset "errors" begin
     @test ScopedValue{Float64}(1)[] == 1.0
     @test_throws InexactError ScopedValue{Int}(1.5)
-    var = ScopedValue(1)
-    @test_throws MethodError var[] = 2
-    scoped() do
-        @test_throws MethodError var[] = 2
+    val = ScopedValue(1)
+    @test_throws MethodError val[] = 2
+    with() do
+        @test_throws MethodError val[] = 2
     end
-    @test_throws MethodError ScopedValue{Int}()
+    val = ScopedValue{Int}()
+    @test_throws KeyError val[]
     @test_throws MethodError ScopedValue()
-end
 
-const svar = ScopedValue(1)
-@testset "inheritance" begin
-    @test svar[] == 1
-    scoped() do
-        @test svar[] == 1
-        scoped() do
-            @test svar[] == 1
-        end
-        scoped(svar => 2) do
-            @test svar[] == 2
-        end
-        @test svar[] == 1
+    sval = ScopedValue(1)
+    with(sval=>2.0) do
+        @test sval[] == 2
     end
-    @test svar[] == 1
 end
 
-const svar_float = ScopedValue(1.0)
+const sval = ScopedValue(1)
+@testset "inheritance" begin
+    @test sval[] == 1
+    with() do
+        @test sval[] == 1
+        with() do
+            @test sval[] == 1
+        end
+        with(sval => 2) do
+            @test sval[] == 2
+        end
+        @test sval[] == 1
+    end
+    @test sval[] == 1
+end
+
+const sval_float = ScopedValue(1.0)
 
 @testset "multiple scoped values" begin
-    scoped(svar => 2, svar_float => 2.0) do
-        @test svar[] == 2
-        @test svar_float[] == 2.0
+    with(sval => 2, sval_float => 2.0) do
+        @test sval[] == 2
+        @test sval_float[] == 2.0
     end
-    scoped(svar => 2, svar => 3) do
-        @test svar[] == 3
+    with(sval => 2, sval => 3) do
+        @test sval[] == 3
     end
 end
 
 emptyf() = nothing
 
 @testset "conversion" begin
-    scoped(emptyf, svar_float=>2)
-    @test_throws MethodError scoped(emptyf, svar_float=>"hello")
+    with(emptyf, sval_float=>2)
+    @test_throws MethodError with(emptyf, sval_float=>"hello")
 end
 
 import Base.Threads: @spawn
 @testset "tasks" begin
     @test fetch(@spawn begin
-        svar[]
+        sval[]
     end) == 1
-    scoped(svar => 2) do
+    with(sval => 2) do
         @test fetch(@spawn begin
-            svar[]
+            sval[]
         end) == 2
     end
 end
 
 @testset "show" begin
-    @test sprint(show, svar) == "ScopedValue{$Int}(1)"
+    @test sprint(show, ScopedValue{Int}()) == "ScopedValue{$Int}(undefined)"
+    @test sprint(show, sval) == "ScopedValue{$Int}(1)"
     @test sprint(show, ScopedValues.current_scope()) == "nothing"
-    scoped(svar => 2.0) do
-        @test sprint(show, svar) == "ScopedValue{$Int}(2)"
-        objid = sprint(show, Base.objectid(svar))
-        @test sprint(show, ScopedValues.current_scope()) == "ScopedValues.Scope()"
+    with(sval => 2.0) do
+        @test sprint(show, sval) == "ScopedValue{$Int}(2)"
+        objid = sprint(show, Base.objectid(sval))
+        @test sprint(show, ScopedValues.current_scope()) == "ScopedValues.Scope(ScopedValue{$Int}@$objid => 2)"
     end
 end
 
 const depth = ScopedValue(0)
-function nth_scoped(f, n)
+function nth_with(f, n)
     if n <= 0
         f()
     else
-        scoped(depth => n) do
-            nth_scoped(f, n-1)
+        with(depth => n) do
+            nth_with(f, n-1)
         end
     end
 end
 
 
-@testset "nested scoped" begin
+@testset "nested with" begin
     @testset for depth in 1:16
-        nth_scoped(depth) do
-            @test svar_float[] == 1.0
+        nth_with(depth) do
+            @test sval_float[] == 1.0
         end
-        scoped(svar_float=>2.0) do
-            nth_scoped(depth) do
-                @test svar_float[] == 2.0
+        with(sval_float=>2.0) do
+            nth_with(depth) do
+                @test sval_float[] == 2.0
             end
         end
-        nth_scoped(depth) do
-            scoped(svar_float=>2.0) do
-                @test svar_float[] == 2.0
+        nth_with(depth) do
+            with(sval_float=>2.0) do
+                @test sval_float[] == 2.0
             end
         end
     end
-    scoped(svar_float=>2.0) do
-        nth_scoped(15) do
-            @test svar_float[] == 2.0
-            scoped(svar_float => 3.0) do
-                @test svar_float[] == 3.0
+    with(sval_float=>2.0) do
+        nth_with(15) do
+            @test sval_float[] == 2.0
+            with(sval_float => 3.0) do
+                @test sval_float[] == 3.0
             end
         end
     end
