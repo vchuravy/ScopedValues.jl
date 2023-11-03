@@ -17,7 +17,7 @@ const svar = ScopedValue(1)
 @show svar[]
 
 # Enter a new dynamic scope and set value
-scoped(svar => 2) do
+with(svar => 2) do
     @show svar
 end
 
@@ -27,7 +27,7 @@ const svar_dict = ScopedValue(Dict())
 
 # Important we are using `merge` to "unshare" the mutable values
 # across the different views of the same scoped value.
-scoped(svar_dict => merge(svar_dict, Dict(:a => 10))) do
+with(svar_dict => merge(svar_dict[], Dict(:a => 10))) do
     @show svar_dict[][:a]
 end
 ```
@@ -39,7 +39,7 @@ const LEVEL = ScopedValue(:GUEST)
 
 function serve(request, response)
     level = isAdmin(request) ? :ADMIN : :GUEST
-    scoped(LEVEL => level) do
+    with(LEVEL => level) do
         Threads.@spawn handle(request, respone)
     end
 end
