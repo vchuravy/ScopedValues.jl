@@ -57,3 +57,23 @@ function handle(request, response)
     # ...
 end
 ```
+
+## Usage with logging
+
+Before Julia 1.11, this package implements scoped variables by using a special "payload" logger
+(just like [ContextVariablesX.jl](https://github.com/tkf/ContextVariablesX.jl)). Therefore,
+changing the logger from within a dynamic scope can clobber the scoped values. To avoid this, use
+
+```julia
+ScopedValues.with_logger
+```
+
+as a replacement for `Logging.with_logger`. Likewise, if you need to access the logger, use
+
+```julia
+ScopedValues.current_logger()
+```
+
+which will unwrap the special ScopedValues's "payload" logger to provide you with the actual logging-logger.
+
+Note that there is no issue with setting a logger *outside* of the dynamic scope. For example, a common usage is to set the global logger at the start of the program (and to not change it mid-execution). In this case, there is no issue clash with ScopedValues.jl, and e.g. `Logging.global_logger()` may be used to set the logger. There is only concern when modifying or accessing the logger from within a dynamic scope provided by ScopedValues.jl (i.e. within a `with` block).
