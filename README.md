@@ -77,3 +77,5 @@ ScopedValues.current_logger()
 which will unwrap the special ScopedValues's "payload" logger to provide you with the actual logging-logger.
 
 Note that there is no issue with setting a logger *outside* of the dynamic scope. For example, a common usage is to set the global logger at the start of the program (and to not change it mid-execution). In this case, there is no issue clash with ScopedValues.jl, and e.g. `Logging.global_logger()` may be used to set the logger. There is only concern when modifying or accessing the logger from within a dynamic scope provided by ScopedValues.jl (i.e. within a `with` block).
+
+There is also no issue with logging to a logger (e.g. `@info`, etc), within a dynamic scope or elsewhere. ScopedValues "payload" logger will pass log messages through to the active logger.
