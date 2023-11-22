@@ -73,7 +73,8 @@ end
     with(sval => 2.0) do
         @test sprint(show, sval) == "ScopedValue{$Int}(2)"
         objid = sprint(show, Base.objectid(sval))
-        @test sprint(show, ScopedValues.current_scope()) == "ScopedValues.Scope(ScopedValue{$Int}@$objid => 2)"
+        # Interpolate to handle `Base.ScopedValues.Scope` vs `ScopedValues.scope`
+        @test sprint(show, ScopedValues.current_scope()) == "$(ScopedValues.Scope)(ScopedValue{$Int}@$objid => 2)"
     end
 end
 
@@ -113,4 +114,18 @@ end
             end
         end
     end
+end
+
+@testset "macro" begin
+    @with sval=>2 sval_float=>2.0 begin
+        @test sval[] == 2
+        @test sval_float[] == 2.0
+    end
+    # Doesn't do much...
+    ret = @with begin
+        @test sval[] == 1
+        @test sval_float[] == 1.0
+        1.23 # return value
+    end
+    @test ret == 1.23
 end
