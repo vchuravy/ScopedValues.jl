@@ -2,7 +2,7 @@ using Logging: AbstractLogger, Logging
 
 struct ScopePayloadLogger <: AbstractLogger
     logger::AbstractLogger
-    scope::Scope
+    scope::Union{Scope, Nothing}
 end
 
 function current_scope()

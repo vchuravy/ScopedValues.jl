@@ -114,3 +114,17 @@ end
         end
     end
 end
+
+@testset "macro" begin
+    @with sval=>2 sval_float=>2.0 begin
+        @test sval[] == 2
+        @test sval_float[] == 2.0
+    end
+    # Doesn't do much...
+    ret = @with begin
+        @test sval[] == 1
+        @test sval_float[] == 1.0
+        1.23 # return value
+    end
+    @test ret == 1.23
+end

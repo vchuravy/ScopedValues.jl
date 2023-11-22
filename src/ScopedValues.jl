@@ -1,9 +1,9 @@
 module ScopedValues
 
-export ScopedValue, with
+export ScopedValue, with, @with
 
 if isdefined(Base, :ScopedValues)
-    import Base.ScopedValues: ScopedValue, with, Scope, current_scope, get
+    import Base.ScopedValues: ScopedValue, with, @with, Scope, current_scope, get
 else
 
 using HashArrayMappedTries
@@ -165,6 +165,63 @@ function with(f, pair::Pair{<:ScopedValue}, rest::Pair{<:ScopedValue}...)
 end
 
 with(@nospecialize(f)) = f()
+
+"""
+    @with vars... expr
+
+Macro version of `with(f, vars...)` but with `expr` instead of `f` function.
+This is similar to using [`with`](@ref) with a `do` block, but avoids creating
+a closure.
+"""
+macro with(exprs...)
+    if length(exprs) > 1
+        ex = last(exprs)
+        exprs = exprs[1:end-1]
+    elseif length(exprs) == 1
+        ex = only(exprs)
+        exprs = ()
+    else
+        error("@with expects at least one argument")
+    end
+    for expr in exprs
+        if expr.head !== :call || first(expr.args) !== :(=>)
+            error("@with expects arguments of the form `A => 2` got $expr")
+        end
+    end
+    exprs = map(esc, exprs)
+
+    return quote
+        current_scope = $current_scope()
+        scope = $(Scope)(current_scope, $(exprs...))
+        @enter_scope scope begin
+            $(esc(ex))
+        end
+    end
+end
+
+# Macro version of `Base.CoreLogging.with_logstate`
+macro with_logstate(logstate, expr)
+    quote
+        t = $current_task()
+        old = t.logstate
+        try
+            t.logstate = logstate
+            $(esc(expr))
+        finally
+            t.logstate = old
+        end
+    end
+end
+
+# Macro version of `enter_scope`
+macro enter_scope(scope, expr)
+    return quote
+        logstate = $(Base.CoreLogging.LogState)($ScopePayloadLogger($current_logger(), $(esc(scope))))
+        @with_logstate logstate begin
+            $(esc(expr))
+        end
+    end
+end
 
 include("payloadlogger.jl")
 
