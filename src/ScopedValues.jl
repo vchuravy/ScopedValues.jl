@@ -3,7 +3,8 @@ module ScopedValues
 export ScopedValue, with, @with
 
 if isdefined(Base, :ScopedValues)
-    import Base.ScopedValues: ScopedValue, with, @with, Scope, current_scope, get
+    import Base.ScopedValues: ScopedValue, with, @with, Scope, get
+    import Core: current_scope
 else
 
 using HashArrayMappedTries
