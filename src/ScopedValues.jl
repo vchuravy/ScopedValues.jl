@@ -200,17 +200,19 @@ macro with(exprs...)
     end
 end
 
+macro __tryfinally(ex, fin)
+    Expr(:tryfinally,
+        :($(esc(ex))),
+        :($(esc(fin))),
+    )
+end
+
 # Macro version of `Base.CoreLogging.with_logstate`
 macro with_logstate(logstate, expr)
     quote
         t = $current_task()
         old = t.logstate
-        try
-            t.logstate = logstate
-            $(esc(expr))
-        finally
-            t.logstate = old
-        end
+        @__tryfinally (t.logstate = logstate; $(esc(expr))) (t.logstate = old;)
     end
 end
 
