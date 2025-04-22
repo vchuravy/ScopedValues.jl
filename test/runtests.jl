@@ -89,7 +89,6 @@ function nth_with(f, n)
     end
 end
 
-
 @testset "nested with" begin
     @testset for depth in 1:16
         nth_with(depth) do
@@ -129,3 +128,18 @@ end
     end
     @test ret == 1.23
 end
+
+@testset "snapshot" begin
+    sshot = @snapshot sval sval_float
+    @with sshot begin
+        @test sval[] == 1
+        @test sval_float[] == 1.0
+    end
+    with(sval=>2, sval_float=>2.0) do
+        with(sshot) do
+            @test sval[] == 1
+            @test sval_float[] == 1.0
+        end
+    end
+end
+

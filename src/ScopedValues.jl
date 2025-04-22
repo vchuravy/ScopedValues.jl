@@ -1,6 +1,6 @@
 module ScopedValues
 
-export ScopedValue, with, @with
+export ScopedValue, with, @with, @snapshot
 
 if isdefined(Base, :ScopedValues)
     import Base.ScopedValues: ScopedValue, with, @with, Scope, get
@@ -60,6 +60,22 @@ Test if the ScopedValue has a default value.
 """
 Base.isassigned(val::ScopedValue) = val.has_default
 
+struct Snapshot
+    values::Vector{Pair{ScopedValue, Any}}
+end
+Snapshot(values::ScopedValue...) = Snapshot(collect(map(v->v => v[], values)))
+
+"""
+    @snapshot exprs...
+
+Create a snapshot containing the `ScopedValue`(s) in `exprs`. This snapshot can
+be used in [`with`](@ref) or [`@with`](@ref) calls.
+"""
+macro snapshot(exprs...)
+    exprs = map(esc, exprs)
+    :($(Snapshot)($(exprs...)))
+end
+
 const ScopeStorage = HAMT{ScopedValue, Any}
 
 mutable struct Scope
@@ -80,6 +96,13 @@ end
 function Scope(scope, pairs::Pair{<:ScopedValue}...)
     for pair in pairs
         scope = Scope(scope, pair...)
+    end
+    return scope::Scope
+end
+
+function Scope(scope, snapshot::Snapshot)
+    for (var, val) in snapshot.values
+        scope = Scope(scope, var, val)
     end
     return scope::Scope
 end
@@ -148,11 +171,25 @@ function Base.show(io::IO, val::ScopedValue)
     print(io, ')')
 end
 
+function restore(snapshot::Snapshot)
+    scope = nothing
+    for (var, val) in snapshot.values
+        scope = Scope(scope, var, val)
+    end
+    return scope::Scope
+end
+
 """
-    with(f, var::ScopedValue{T} => val::T)
+    with(f, var::ScopedValue{T} => val::T...)
 
 Execute `f` in a new scope with `var` set to `val`.
+
+    with(f, snapshot::Snapshot)
+
+Execute `f` in a new scope containing all the scoped values in `snapshot`.
 """
+function with end
+
 function with(f, pair::Pair{<:ScopedValue}, rest::Pair{<:ScopedValue}...)
     @nospecialize
     scope = current_scope()
@@ -160,6 +197,14 @@ function with(f, pair::Pair{<:ScopedValue}, rest::Pair{<:ScopedValue}...)
     for pair in rest
         scope = Scope(scope, pair...)
     end
+    enter_scope(scope) do
+        f()
+    end
+end
+
+function with(f, snapshot::Snapshot)
+    @nospecialize
+    scope = restore(snapshot)
     enter_scope(scope) do
         f()
     end
@@ -173,6 +218,10 @@ with(@nospecialize(f)) = f()
 Macro version of `with(f, vars...)` but with `expr` instead of `f` function.
 This is similar to using [`with`](@ref) with a `do` block, but avoids creating
 a closure.
+
+    @with snapshot expr
+
+Macro version of `with(f, snapshot)` but with `expr` instead of `f` function.
 """
 macro with(exprs...)
     if length(exprs) > 1
@@ -184,9 +233,13 @@ macro with(exprs...)
     else
         error("@with expects at least one argument")
     end
-    for expr in exprs
-        if expr.head !== :call || first(expr.args) !== :(=>)
-            error("@with expects arguments of the form `A => 2` got $expr")
+
+    # if this isn't the snapshot form, it must be the pairs form
+    if !(length(exprs) == 1 && isa(exprs[1], Symbol))
+        for expr in exprs
+            if expr.head !== :call || first(expr.args) !== :(=>)
+                error("@with expects arguments of the form `A => 2` got $expr")
+            end
         end
     end
     exprs = map(esc, exprs)
