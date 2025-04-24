@@ -1,6 +1,6 @@
 module ScopedValues
 
-export ScopedValue, with, @with, @snapshot
+export ScopedValue, with, @with, snapshot
 
 if isdefined(Base, :ScopedValues)
     import Base.ScopedValues: ScopedValue, with, @with, Scope, get
@@ -63,17 +63,33 @@ Base.isassigned(val::ScopedValue) = val.has_default
 struct Snapshot
     values::Vector{Pair{ScopedValue, Any}}
 end
-Snapshot(values::ScopedValue...) = Snapshot(collect(map(v->v => v[], values)))
 
 """
-    @snapshot exprs...
+    snapshot()
+    snapshot(pairs::Pair{<:ScopedValue}...)
+    snapshot(values::ScopedValue...)
 
-Create a snapshot containing the `ScopedValue`(s) in `exprs`. This snapshot can
-be used in [`with`](@ref) or [`@with`](@ref) calls.
+Create a snapshot containing all the `ScopedValue`s in the current scope. If
+`pairs` or `values` are specified, they are added to the snapshot. This
+snapshot can be used in subsequent [`with`](@ref) or [`@with`](@ref) calls.
 """
-macro snapshot(exprs...)
-    exprs = map(esc, exprs)
-    :($(Snapshot)($(exprs...)))
+function snapshot()
+    values = Vector{Pair{ScopedValue, Any}}()
+    scope = current_scope()
+    if scope !== nothing
+        append!(values, collect(scope.values))
+    end
+    return Snapshot(values)
+end
+function snapshot(pairs::Pair{<:ScopedValue}...)
+    sshot = snapshot()
+    append!(sshot.values, collect(pairs))
+    return sshot
+end
+function snapshot(values::ScopedValue...)
+    sshot = snapshot()
+    append!(sshot.values, collect(map(v->v=>v[], values)))
+    return sshot
 end
 
 const ScopeStorage = HAMT{ScopedValue, Any}
@@ -171,22 +187,16 @@ function Base.show(io::IO, val::ScopedValue)
     print(io, ')')
 end
 
-function restore(snapshot::Snapshot)
-    scope = nothing
-    for (var, val) in snapshot.values
-        scope = Scope(scope, var, val)
-    end
-    return scope::Scope
-end
-
 """
     with(f, var::ScopedValue{T} => val::T...)
 
-Execute `f` in a new scope with `var` set to `val`.
+Execute `f` in a new scope with `var`(s) set to `val`(s).
 
-    with(f, snapshot::Snapshot)
+    with(f, snapshot::Snapshot, pairs::Pair{<:ScopedValue}...)
 
-Execute `f` in a new scope containing all the scoped values in `snapshot`.
+Execute `f` in a new scope containing all the scoped values in `snapshot`
+as well as any `pairs`, if specified.
+
 """
 function with end
 
@@ -197,17 +207,16 @@ function with(f, pair::Pair{<:ScopedValue}, rest::Pair{<:ScopedValue}...)
     for pair in rest
         scope = Scope(scope, pair...)
     end
-    enter_scope(scope) do
-        f()
-    end
+    enter_scope(f, scope)
 end
 
-function with(f, snapshot::Snapshot)
+function with(f, snapshot::Snapshot, pairs::Pair{<:ScopedValue}...)
     @nospecialize
-    scope = restore(snapshot)
-    enter_scope(scope) do
-        f()
+    scope = Scope(nothing, snapshot)
+    for pair in pairs
+        scope = Scope(scope, pair...)
     end
+    enter_scope(f, scope)
 end
 
 with(@nospecialize(f)) = f()

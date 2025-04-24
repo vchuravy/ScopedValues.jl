@@ -130,14 +130,24 @@ end
 end
 
 @testset "snapshot" begin
-    sshot = @snapshot sval sval_float
-    @with sshot begin
+    sshot1 = snapshot(sval, sval_float)
+    sshot2 = nothing
+    @with sshot1 begin
         @test sval[] == 1
+        @test sval_float[] == 1.0
+        sshot2 = snapshot(sval=>10)
+    end
+    @with sshot2 begin
+        @test sval[] == 10
         @test sval_float[] == 1.0
     end
     with(sval=>2, sval_float=>2.0) do
-        with(sshot) do
+        with(sshot1) do
             @test sval[] == 1
+            @test sval_float[] == 1.0
+        end
+        @with sshot2 begin
+            @test sval[] == 10
             @test sval_float[] == 1.0
         end
     end
