@@ -153,3 +153,21 @@ end
     end
 end
 
+@testset "snapshot usage" begin
+    function do_first_part()
+        return ScopedValues.snapshot()
+    end
+    lggr = ScopedValue(:no_lggr)
+    lglvl = ScopedValue(:none)
+    @with lggr=>:cons_lggr lglvl=>:debug begin
+        scnd_sshot = do_first_part()
+    end
+    @test lggr[] == :no_lggr
+    function do_second_part(scnd_sshot)
+        @with scnd_sshot begin
+            @test lggr[] == :cons_lggr
+            @test lglvl[] == :debug
+        end
+    end
+    do_second_part(scnd_sshot)
+end
