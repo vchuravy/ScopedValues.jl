@@ -89,7 +89,6 @@ function nth_with(f, n)
     end
 end
 
-
 @testset "nested with" begin
     @testset for depth in 1:16
         nth_with(depth) do
@@ -128,4 +127,47 @@ end
         1.23 # return value
     end
     @test ret == 1.23
+end
+
+@testset "snapshot" begin
+    sshot1 = snapshot(sval, sval_float)
+    sshot2 = nothing
+    @with sshot1 begin
+        @test sval[] == 1
+        @test sval_float[] == 1.0
+        sshot2 = snapshot(sval=>10)
+    end
+    @with sshot2 begin
+        @test sval[] == 10
+        @test sval_float[] == 1.0
+    end
+    with(sval=>2, sval_float=>2.0) do
+        with(sshot1) do
+            @test sval[] == 1
+            @test sval_float[] == 1.0
+        end
+        @with sshot2 begin
+            @test sval[] == 10
+            @test sval_float[] == 1.0
+        end
+    end
+end
+
+@testset "snapshot usage" begin
+    function do_first_part()
+        return ScopedValues.snapshot()
+    end
+    lggr = ScopedValue(:no_lggr)
+    lglvl = ScopedValue(:none)
+    @with lggr=>:cons_lggr lglvl=>:debug begin
+        scnd_sshot = do_first_part()
+    end
+    @test lggr[] == :no_lggr
+    function do_second_part(scnd_sshot)
+        @with scnd_sshot begin
+            @test lggr[] == :cons_lggr
+            @test lglvl[] == :debug
+        end
+    end
+    do_second_part(scnd_sshot)
 end
