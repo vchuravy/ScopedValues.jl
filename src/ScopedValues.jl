@@ -50,6 +50,7 @@ mutable struct ScopedValue{T}
     ScopedValue{T}(val) where T = new{T}(true, val)
     ScopedValue(val::T) where T = new{T}(true, val)
 end
+Base.hash(sv::ScopedValue) = objectid(sv)
 
 Base.eltype(::ScopedValue{T}) where {T} = T
 
