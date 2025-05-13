@@ -1,10 +1,16 @@
 module ScopedValues
 
-export ScopedValue, with, @with
+export ScopedValue, with, @with, ScopedFunctor
 
 if isdefined(Base, :ScopedValues)
-    import Base.ScopedValues: ScopedValue, with, @with, Scope, get
-    import Core: current_scope
+
+import Base.ScopedValues: ScopedValue, with, @with, Scope, get
+import Core: current_scope
+
+macro enter_scope(scope, expr)
+    Expr(:tryfinally, esc(expr), nothing, :(Scope($(esc(scope))::Union{Nothing, Scope})))
+end
+
 else
 
 using HashArrayMappedTries
@@ -229,6 +235,21 @@ end
 include("payloadlogger.jl")
 
 end # isdefined
+
+"""
+    ScopedFunctor(f)
+
+Create a functor that records the current dynamic scope, i.e. all current
+`ScopedValue`s, along with `f`. When the functor is invoked, it runs `f`
+in the recorded dynamic scope.
+"""
+struct ScopedFunctor{F}
+    f::F
+    scope::Union{Nothing, Scope}
+
+    ScopedFunctor(f) = new{typeof(f)}(f, current_scope())
+end
+(sf::ScopedFunctor)() = @enter_scope sf.scope sf.f()
 
 @deprecate scoped with
 

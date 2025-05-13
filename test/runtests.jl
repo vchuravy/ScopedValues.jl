@@ -129,3 +129,15 @@ end
     end
     @test ret == 1.23
 end
+
+@testset "ScopedFunctor" begin
+    function check_svals()
+        @test sval[] == 8
+        @test sval_float[] == 8.0
+    end
+    sf = nothing
+    @with sval=>8 sval_float=>8.0 begin
+        sf = ScopedFunctor(check_svals)
+    end
+    sf()
+end
