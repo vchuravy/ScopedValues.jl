@@ -251,6 +251,20 @@ struct ScopedFunctor{F}
 end
 (sf::ScopedFunctor)() = @enter_scope sf.scope sf.f()
 
+"""
+    get(val::ScopedValue{T}, default::T)::T
+
+Like the single-argument [`ScopedValues.get`](@ref), but returns the
+provided `default` rather than the default in `val` and does not wrap
+the return in `Some` (to save the allocation).
+"""
+function get(val::ScopedValue{T}, default::T) where {T}
+    scope = current_scope()::Union{Nothing, Scope}
+    scope === nothing && return default
+    scope = scope::Scope
+    return Base.get(scope.values, val, default)
+end
+
 @deprecate scoped with
 
 end # module ScopedValues
