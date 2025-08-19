@@ -252,14 +252,14 @@ end
 (sf::ScopedFunctor)() = @enter_scope sf.scope sf.f()
 
 """
-    get(val::ScopedValue{T}, default::T)::T
+    get(val::ScopedValue{T1}, default::T2)::Union{T1, T2}
 
 Like the single-argument [`ScopedValues.get`](@ref), but returns the
 provided `default` rather than the default in `val` and does not wrap
 the return in `Some` (to save the allocation).
 """
-function get(val::ScopedValue{T}, default::T) where {T}
-    scope = current_scope()::Union{Nothing, Scope}
+function get(val::ScopedValue{T1}, default::T2) where {T1, T2}
+    scope = current_scope()
     scope === nothing && return default
     scope = scope::Scope
     return Base.get(scope.values, val, default)
