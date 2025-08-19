@@ -140,4 +140,8 @@ end
         sf = ScopedFunctor(check_svals)
     end
     sf()
+    @with sval=>8 sval_float=>8.0 begin
+        sf2 = ScopedFunctor{Function}(check_svals)
+    end
+    sf2()
 end
