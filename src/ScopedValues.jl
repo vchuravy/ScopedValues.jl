@@ -255,14 +255,14 @@ end
     get(val::ScopedValue{T1}, default::T2)::Union{T1, T2}
 
 Like the single-argument [`ScopedValues.get`](@ref), but returns the
-provided `default` rather than the default in `val` and does not wrap
-the return in `Some` (to save the allocation).
+provided `default` (rather than `nothing`) if `val` has no default.
+Also, does not wrap the return in `Some`.
 """
 function get(val::ScopedValue{T1}, default::T2) where {T1, T2}
     scope = current_scope()
-    scope === nothing && return default
+    scope === nothing && return isassigned(val) ? val.default : default
     scope = scope::Scope
-    return Base.get(scope.values, val, default)
+    return Base.get(scope.values, val, isassigned(val) ? val.default : default)
 end
 
 @deprecate scoped with
