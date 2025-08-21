@@ -247,8 +247,9 @@ struct ScopedFunctor{F}
     f::F
     scope::Union{Nothing, Scope}
 
-    ScopedFunctor(f) = new{typeof(f)}(f, current_scope())
+    ScopedFunctor{F}(f) where {F} = new{F}(f, current_scope())
 end
+ScopedFunctor(f) = ScopedFunctor{typeof(f)}(f)
 (sf::ScopedFunctor)() = @enter_scope sf.scope sf.f()
 
 @deprecate scoped with
