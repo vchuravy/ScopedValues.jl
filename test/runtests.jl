@@ -145,3 +145,15 @@ end
     end
     sf2()
 end
+
+const sval_unassigned = ScopedValue{Int}()
+@testset "get with default" begin
+    @test ScopedValues.get(sval_unassigned, nothing) == nothing
+    @test ScopedValues.get(sval_unassigned, -1) == -1
+    @with sval_unassigned=>10 begin
+        @test ScopedValues.get(sval_unassigned, -1) == 10
+    end
+    @static if VERSION >= v"1.9"
+    @test 0 == @allocations ScopedValues.get(sval_unassigned, nothing)
+    end
+end
